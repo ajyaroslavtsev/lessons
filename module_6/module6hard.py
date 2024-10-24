@@ -84,7 +84,7 @@ class Circle(Figure):
 
 
 class Triangle(Figure):
-    '''Триугольник - является фигурой'''
+    '''Треугольник - является фигурой'''
     sides_count = 3
 
     def get_square(self):
