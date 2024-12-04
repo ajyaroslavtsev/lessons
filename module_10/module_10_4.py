@@ -42,7 +42,7 @@ class Cafe:
                 print(f'{guest.name} в очереди')
 
     def discuss_guests(self):
-        while not self.queue.empty() or any([table.guest for table in self.tables]):
+        while not self.queue.empty() or any(table.guest for table in self.tables):
             for table in self.tables:
                 if table.guest and not table.guest.is_alive():
                     print(f'{table.guest.name} покушал(-а) и ушёл(ушла)')
@@ -70,7 +70,6 @@ if __name__ == '__main__':
     cafe.guest_arrival(*guests)
     # Обслуживание гостей
     cafe.discuss_guests()
-    exit()
 
     # Вывод на консоль (последовательность может меняться из-за случайного время пребывания гостя):
     '''
