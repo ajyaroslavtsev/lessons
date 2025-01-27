@@ -1,0 +1,160 @@
+# -*- coding: utf-8 -*-
+from itertools import product
+
+from aiogram import Bot,Dispatcher,executor,types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher.filters.state import State, StatesGroup
+from aiogram.dispatcher import FSMContext
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+import asyncio
+
+import config
+from crud_functions_ import get_all_products, add_user, is_included
+
+
+api = config.TELEGRAM_BOT_TOKEN
+bot = Bot(token=api)
+dp = Dispatcher(bot,storage=MemoryStorage())
+
+products = get_all_products()
+
+kb = ReplyKeyboardMarkup(resize_keyboard= True)
+button1 = KeyboardButton(text='Рассчитать')
+button2 = KeyboardButton(text='Информация')
+button3 = KeyboardButton(text='Купить')
+button4 = KeyboardButton(text='Регистрация')
+kb.row(button1, button2)
+kb.row(button3, button4)
+
+# Inline-клавиатура
+kbi = InlineKeyboardMarkup(resize_keyboard= True)
+button3 = InlineKeyboardButton(text='Рассчитать норму калорий', callback_data='calories')
+button4 = InlineKeyboardButton(text='Формулы расчёта', callback_data='formulas')
+kbi.add(button3,button4)
+
+inline_kb_menu = InlineKeyboardMarkup(resize_keyboard=True)
+button_prod1 = InlineKeyboardButton(text='Продукт 1', callback_data='product_buying')
+button_prod2 = InlineKeyboardButton(text='Продукт 2', callback_data='product_buying')
+button_prod3 = InlineKeyboardButton(text='Продукт 3', callback_data='product_buying')
+button_prod4 = InlineKeyboardButton(text='Продукт 4', callback_data='product_buying')
+
+inline_kb_menu.row(button_prod1,button_prod2,button_prod3,button_prod4)
+
+
+class UserState(StatesGroup):
+    age = State()    # возраст
+    growth = State() # рост
+    weight = State() # вес
+
+
+class RegistrationState(StatesGroup):
+    username = State()
+    email = State()
+    age = State()
+    balance = State()
+
+
+@dp.message_handler(commands=['start'])
+async def start(message):
+    await message.answer('Привет! Я бот помогающий твоему здоровью.', reply_markup=kb)
+
+
+@dp.message_handler(text=['Рассчитать',])
+async def main_menu(message):
+    await message.answer('Выберите опцию:', reply_markup=kbi)
+
+
+@dp.callback_query_handler(text='formulas')
+async def get_formulas(call):
+    await call.message.answer('10 х вес (кг) + 6,25 x рост (см) – 5 х возраст (г) + 5')
+
+
+@dp.callback_query_handler(text='calories')
+async def set_age(call):
+    await call.message.answer('Введите свой возраст:')
+    await UserState.age.set()
+
+
+@dp.message_handler(state=UserState.age)
+async def set_growth(message, state):
+    await state.update_data(age=message.text)
+    await message.answer('Введите свой рост:')
+    await UserState.growth.set()
+
+
+@dp.message_handler(state=UserState.growth)
+async def set_weight(message, state):
+    await state.update_data(growth=message.text)
+    await message.answer('Введите свой вес:')
+    await UserState.weight.set()
+
+
+@dp.message_handler(state=UserState.weight)
+async def send_calories(message, state):
+    await state.update_data(weight=message.text)
+    data = await state.get_data()
+    calories = 10 * float(data['weight']) + 6.25 * float(data['growth']) - 5 * float(data['age']) + 5
+    await message.answer(f'Ваша норма калорий: {calories}')
+    await state.finish()
+
+
+@dp.message_handler(text=['Купить',])
+async def get_buying_list(message):
+    global products
+    for product in products:
+        await message.answer(f'Название: {product[1]}| Описание: {product[2]} | Цена: {product[3]}')
+        await bot.send_photo(message.chat.id, types.InputFile.from_url(f'{product[4]}'))
+    await message.answer(f'Выберите продукт для покупки:', reply_markup=inline_kb_menu)
+
+
+@dp.callback_query_handler(text='product_buying')
+async def send_confirm_message(call):
+    await call.message.answer('Вы успешно приобрели продукт!')
+
+
+
+@dp.message_handler(text='Регистрация')
+async def sing_up(message):
+    await message.answer('Введите имя пользователя (только латинский алфавит):')
+    await RegistrationState.username.set()
+
+
+@dp.message_handler(state=RegistrationState.username)
+async def set_username(message, state):
+    username = message.text
+    if not is_included(username):
+        await state.update_data(username=username)
+        await message.answer('Введите свой email:')
+        await RegistrationState.email.set()
+    else:
+        await message.answer('Пользователь существует, введите другое имя')
+        await RegistrationState.username.set()
+
+
+@dp.message_handler(state=RegistrationState.email)
+async def set_email(message, state):
+    email = message.text
+    await state.update_data(email=email)
+    await message.answer('Введите свой возраст:')
+    await RegistrationState.age.set()
+
+
+@dp.message_handler(state=RegistrationState.age)
+async def set_email(message, state):
+    age = message.text
+    await state.update_data(age=age)
+    data = await state.get_data()
+    add_user(data['username'], data['email'], data['age'])
+    await message.answer('Регистрация прошла успешно')    
+    await state.finish()   
+
+
+
+@dp.message_handler()
+async def all_massages(message):
+    await message.answer('Введите команду /start, чтобы начать общение.')
+
+
+if __name__ == '__main__':
+    executor.start_polling(dp,skip_updates=True)
